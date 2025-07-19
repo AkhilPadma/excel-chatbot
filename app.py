@@ -1,65 +1,48 @@
 import streamlit as st
 import pandas as pd
-import openai
 import os
-from openai import OpenAI
+import requests
 
-# Set page config
+# Set the Streamlit page title
 st.set_page_config(page_title="Excel Chatbot", layout="wide")
+st.title("📊 Chat with Your Excel Sheet")
 
-# API Key (set it via Streamlit secrets or environment)
-api_key = os.getenv("OPENAI_API_KEY", "sk-xxxx")  # Replace or use secrets
-client = OpenAI(api_key=api_key)
+# Mistral API Key Setup
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
+if not MISTRAL_API_KEY:
+    st.warning("Please set your Mistral API token as the 'MISTRAL_API_KEY' environment variable.")
+    st.stop()
 
-# Title
-st.title("📊 Excel Chatbot using OpenAI API")
+MISTRAL_API_URL = "https://api.mistral.ai/v1/engines/your-engine-id/completions"
+HEADERS = {
+    "Authorization": f"Bearer {MISTRAL_API_KEY}",
+    "Content-Type": "application/json"
+}
 
-# Upload file
-uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
-
+# Upload Excel file
+uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx", "xls"])
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
-    st.subheader("Preview of Excel Data")
+    st.write("Preview of your data:")
     st.dataframe(df)
 
-    st.subheader("Column Types:")
-    st.dataframe(df.dtypes.astype(str).reset_index().rename(columns={'index': 'Column'}))
+    # Get user input (the question they want to ask)
+    user_input = st.text_input("Ask a question about your Excel data:")
+    if user_input:
+        # Format the prompt using the user's question and the Excel data
+        prompt = f"""You are a data analyst. Here is a table:\n{df.to_markdown(index=False)}\n\nQuestion: {user_input}\nAnswer:"""
 
-    st.subheader("Ask a question about your Excel data:")
-    question = st.text_input("")
-
-    if question:
-        # Construct prompt
-        prompt = f"""
-        You are a data assistant. The following is a pandas DataFrame:
-        {df.head(10).to_markdown()}
-        
-        Answer this question based on the DataFrame:
-        {question}
-        
-        Return Python code to answer this.
-        """
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
+        with st.spinner("Generating response..."):
+            # Send request to Mistral API
+            response = requests.post(
+                MISTRAL_API_URL,
+                headers=HEADERS,
+                json={"inputs": prompt}
             )
-            code = response.choices[0].message.content.strip("`python").strip("`").strip()
 
-            st.subheader("🔍 Generated Code:")
-            st.code(code, language="python")
-
-            try:
-                # Execute the generated code safely
-                local_env = {"df": df}
-                exec(code, {}, local_env)
-                output = local_env.get("output", "No output variable returned.")
-                st.subheader("✅ Result:")
-                st.write(output)
-            except Exception as e:
-                st.error(f"Error executing generated code: {e}")
-
-        except Exception as e:
-            st.error(f"❌ API Error: {e}")
+        # Handle response
+        if response.status_code == 200:
+            result = response.json()
+            st.success(result.get("generated_text", "No answer generated"))
+        else:
+            st.error(f"Error {response.status_code} - {response.text}")
