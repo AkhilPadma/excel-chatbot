@@ -3,4 +3,5 @@ pandas
 openpyxl
 matplotlib
 huggingface_hub
+langchain
 langchain-community
