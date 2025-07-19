@@ -1,6 +1,6 @@
 streamlit
-openai
 pandas
-matplotlib
 openpyxl
-
+matplotlib
+huggingface_hub
+langchain-community

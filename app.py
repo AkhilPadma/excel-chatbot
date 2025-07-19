@@ -1,25 +1,29 @@
 import streamlit as st
-
-st.title("Excel Chatbot Test")
-st.write("If you're seeing this, Streamlit is working!")
-
 import pandas as pd
+import matplotlib.pyplot as plt
+import io
+import contextlib
+from langchain_community.llms import HuggingFaceHub
+import os
 
 # App Title
 st.set_page_config(page_title="Excel Chatbot", layout="wide")
 st.title(" Natural Language Excel Chatbot")
 
+# Set Hugging Face API Token
+os.environ["HUGGINGFACEHUB_API_TOKEN"] = st.secrets["HUGGINGFACEHUB_API_TOKEN"]
+
 # Upload section
-uploaded_file = st.file_uploader(" C:\Users\akhil\excel_chatbot\sample_excel_100rows.xlsx", type=["xlsx"])
+uploaded_file = st.file_uploader(" Upload an Excel (.xlsx) file", type=["xlsx"])
 
 if uploaded_file:
     try:
         # Load Excel sheet into pandas
         df = pd.read_excel(uploaded_file, engine='openpyxl')
 
-        # Clean up column names: lower, replace space/specials
+        # Clean up column names
         df.columns = [
-            col.strip().lower().replace(" ", "_").replace("(", "").replace(")", "").replace("$", "") 
+            col.strip().lower().replace(" ", "_").replace("(", "").replace(")", "").replace("$", "")
             for col in df.columns
         ]
 
@@ -37,40 +41,29 @@ if uploaded_file:
 else:
     st.info(" Please upload an Excel file to continue.")
 
-
-import openai
-import matplotlib.pyplot as plt
-import io
-import contextlib
-
-# Get API key from Streamlit secrets
-openai.api_key = st.secrets["OPENAI_API_KEY"]
-
-def ask_gpt(query, df):
+def ask_model(query, df):
+    """
+    Asks a question to a locally run language model.
+    """
     schema = df.dtypes.to_dict()
 
-    # Prompt for GPT
     prompt = f"""
-You are a data analyst working with a pandas DataFrame (called `df`) with this schema:
+You are a data analyst working with a pandas DataFrame called `df` with this schema:
 {schema}
 
 A user asked: "{query}"
 
-Reply with:
-1. One-liner answer (if possible)
-2. Or valid Python code using pandas and matplotlib to compute the answer or show a chart.
-
-Don't assume column names — only use what's in schema.
-Return only the code (no explanation or markdown).
+Reply with valid Python code using pandas and matplotlib to compute or visualize the answer.
+Use only column names from the schema above.
+Don't explain the code, just return the Python code directly.
 """
+    
+    # Initialize the Hugging Face model
+    llm = HuggingFaceHub(repo_id="mistralai/Mistral-7B-Instruct-v0.2", model_kwargs={"temperature":0.1, "max_length":512})
+    
+    response = llm(prompt)
 
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0
-    )
-
-    return response["choices"][0]["message"]["content"]
+    return response
 
 st.markdown("---")
 query = st.text_input(" Ask a question about your Excel data:")
@@ -78,18 +71,19 @@ query = st.text_input(" Ask a question about your Excel data:")
 if query and uploaded_file:
     with st.spinner("Thinking..."):
         try:
-            gpt_code = ask_gpt(query, df)
+            model_code = ask_model(query, df)
 
-            st.code(gpt_code, language="python")
+            # Ensure the response is treated as code
+            st.code(model_code, language="python")
 
-            # Execute code in safe env
+            # Execute code in a safe environment
             with contextlib.redirect_stdout(io.StringIO()) as f:
                 local_env = {"df": df, "plt": plt, "st": st}
-                exec(gpt_code, local_env)
+                exec(model_code, local_env)
 
             output = f.getvalue()
             if output:
                 st.text(output)
 
         except Exception as e:
-            st.error(f" Error running GPT-generated code: {e}")
+            st.error(f" Error running the generated code: {e}")
