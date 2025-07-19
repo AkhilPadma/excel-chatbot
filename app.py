@@ -1,65 +1,45 @@
-import streamlit as st
 import pandas as pd
-import openai
-import os
-from openai import OpenAI
+import streamlit as st
+import requests
 
-# Set page config
-st.set_page_config(page_title="Excel Chatbot", layout="wide")
+HF_API_KEY = st.secrets["HF_API_KEY"]
+MODEL = "HuggingFaceH4/zephyr-7b-beta"
 
-# API Key (set it via Streamlit secrets or environment)
-api_key = os.getenv("OPENAI_API_KEY", "sk-xxxx")  # Replace or use secrets
-client = OpenAI(api_key=api_key)
+def ask_huggingface(prompt):
+    headers = {
+        "Authorization": f"Bearer {HF_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
-# Title
-st.title(" Excel Chatbot using OpenAI API")
+    payload = {
+        "inputs": prompt,
+        "parameters": {"temperature": 0.5, "max_new_tokens": 200},
+    }
 
-# Upload file
-uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
+    response = requests.post(
+        f"https://api-inference.huggingface.co/models/{MODEL}",
+        headers=headers,
+        json=payload,
+    )
 
+    if response.status_code != 200:
+        st.error(f"Error: {response.status_code} - {response.text}")
+        return None
+
+    output = response.json()
+    return output[0]["generated_text"] if isinstance(output, list) else output.get("generated_text")
+
+# Streamlit UI
+st.title("Excel Chatbot - Hugging Face Version")
+
+uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
-    st.subheader("Preview of Excel Data")
-    st.dataframe(df)
+    st.write(df.head())
 
-    st.subheader("Column Types:")
-    st.dataframe(df.dtypes.astype(str).reset_index().rename(columns={'index': 'Column'}))
-
-    st.subheader("Ask a question about your Excel data:")
-    question = st.text_input("")
-
+    question = st.text_input("Ask a question about your Excel data:")
     if question:
-        # Construct prompt
-        prompt = f"""
-        You are a data assistant. The following is a pandas DataFrame:
-        {df.head(10).to_markdown()}
-        
-        Answer this question based on the DataFrame:
-        {question}
-        
-        Return Python code to answer this.
-        """
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-            )
-            code = response.choices[0].message.content.strip("`python").strip("`").strip()
-
-            st.subheader(" Generated Code:")
-            st.code(code, language="python")
-
-            try:
-                # Execute the generated code safely
-                local_env = {"df": df}
-                exec(code, {}, local_env)
-                output = local_env.get("output", "No output variable returned.")
-                st.subheader(" Result:")
-                st.write(output)
-            except Exception as e:
-                st.error(f"Error executing generated code: {e}")
-
-        except Exception as e:
-            st.error(f"API Error: {e}")
+        prompt = f"Given the following dataframe:\n{df.head(10)}\n\nAnswer this: {question}"
+        response = ask_huggingface(prompt)
+        if response:
+            st.success(response)
