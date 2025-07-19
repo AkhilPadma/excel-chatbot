@@ -1,36 +1,46 @@
 import streamlit as st
 import pandas as pd
-from transformers import pipeline
-import tempfile
+import requests
+import os
 
-# Load model pipeline once
-@st.cache_resource
-def load_pipeline():
-    return pipeline("text-generation", model="HuggingFaceH4/zephyr-7b-beta")
-
-qa_pipeline = load_pipeline()
+HF_TOKEN = os.getenv("HF_TOKEN")  # Set this in Streamlit Cloud or locally
 
 # Streamlit UI
-st.title("📊 Excel Chatbot using Hugging Face (Offline)")
+st.title("📊 Excel Chatbot with Hugging Face Inference API")
 
 uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx", "xls"])
 
 if uploaded_file:
-    # Read Excel into DataFrame
     df = pd.read_excel(uploaded_file)
-    st.subheader("🔍 Preview of Your Data")
+    st.subheader("📁 Data Preview")
     st.dataframe(df)
 
-    # Ask a question
-    question = st.text_input("Ask a question about your Excel data:")
-    
-    if question:
+    user_question = st.text_input("Ask a question about your Excel data:")
+
+    if user_question:
+        context = df.to_csv(index=False)
+        prompt = f"""You are an assistant. Use the following data table to answer the question.\n\nData:\n{context}\n\nQuestion: {user_question}"""
+
+        headers = {
+            "Authorization": f"Bearer {HF_TOKEN}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "inputs": prompt,
+            "parameters": {"max_new_tokens": 200}
+        }
+
         with st.spinner("Thinking..."):
-            # Convert df to CSV as a prompt context
-            csv_context = df.to_csv(index=False)
-            prompt = f"""You are a helpful assistant. Given this table data:\n{csv_context}\n\nAnswer this question based on the data: {question}"""
-            
-            result = qa_pipeline(prompt, max_new_tokens=200, do_sample=True)[0]['generated_text']
-            
-            st.subheader("🧠 Response")
-            st.write(result)
+            response = requests.post(
+                "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1",
+                headers=headers,
+                json=payload
+            )
+
+            if response.status_code == 200:
+                result = response.json()[0]["generated_text"]
+                st.subheader("🧠 Response")
+                st.write(result)
+            else:
+                st.error(f"❌ Error: {response.status_code} - {response.text}")
