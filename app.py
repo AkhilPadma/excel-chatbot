@@ -13,7 +13,7 @@ if not MISTRAL_API_KEY:
     st.warning("Please set your Mistral API token as the 'MISTRAL_API_KEY' environment variable.")
     st.stop()
 
-MISTRAL_API_URL = "https://api.mistral.ai/v1/engines/your-engine-id/completions"
+MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"
 HEADERS = {
     "Authorization": f"Bearer {MISTRAL_API_KEY}",
     "Content-Type": "application/json"
@@ -26,23 +26,34 @@ if uploaded_file:
     st.write("Preview of your data:")
     st.dataframe(df)
 
-    # Get user input (the question they want to ask)
+    # Get user input
     user_input = st.text_input("Ask a question about your Excel data:")
     if user_input:
-        # Format the prompt using the user's question and the Excel data
-        prompt = f"""You are a data analyst. Here is a table:\n{df.to_markdown(index=False)}\n\nQuestion: {user_input}\nAnswer:"""
+        try:
+            # Convert DataFrame to markdown format
+            table_md = df.to_markdown(index=False)
+        except ImportError:
+            st.error("Missing 'tabulate' package required for to_markdown(). Please add it to your requirements.txt")
+            st.stop()
 
-        with st.spinner("Generating response..."):
-            # Send request to Mistral API
+        # Prompt formatting
+        prompt = f"""You are a helpful data analyst. Here is the Excel data table:\n{table_md}\n\nQuestion: {user_input}\nAnswer:"""
+
+        with st.spinner("Generating response from Mistral..."):
             response = requests.post(
                 MISTRAL_API_URL,
                 headers=HEADERS,
-                json={"inputs": prompt}
+                json={
+                    "model": "mistral-tiny",  # Use mistral-small or mistral-medium if available to you
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.7
+                }
             )
 
-        # Handle response
         if response.status_code == 200:
             result = response.json()
-            st.success(result.get("generated_text", "No answer generated"))
+            st.success(result["choices"][0]["message"]["content"])
         else:
             st.error(f"Error {response.status_code} - {response.text}")
