@@ -2,42 +2,64 @@ import streamlit as st
 import pandas as pd
 import openai
 import os
+from openai import OpenAI
+
+# Set page config
+st.set_page_config(page_title="Excel Chatbot", layout="wide")
+
+# API Key (set it via Streamlit secrets or environment)
+api_key = os.getenv("OPENAI_API_KEY", "sk-xxxx")  # Replace or use secrets
+client = OpenAI(api_key=api_key)
 
 # Title
-st.set_page_config(page_title="Excel Chatbot", layout="wide")
-st.title("🧠 Excel Chatbot using OpenAI")
+st.title(" Excel Chatbot using OpenAI API")
 
-# File uploader
-uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
+# Upload file
+uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
-    st.subheader("Uploaded Data")
+    st.subheader("Preview of Excel Data")
     st.dataframe(df)
 
     st.subheader("Column Types:")
-    st.dataframe(pd.DataFrame(df.dtypes, columns=["Data Type"]).T)
+    st.dataframe(df.dtypes.astype(str).reset_index().rename(columns={'index': 'Column'}))
 
-    # Prompt input
-    user_question = st.text_input("Ask a question about your Excel data:")
+    st.subheader("Ask a question about your Excel data:")
+    question = st.text_input("")
 
-    if user_question:
-        # Placeholder: Load your OpenAI API key here
-        openai.api_key = os.getenv("OPENAI_API_KEY", "sk-xxxx")  # Replace with real key if available
+    if question:
+        # Construct prompt
+        prompt = f"""
+        You are a data assistant. The following is a pandas DataFrame:
+        {df.head(10).to_markdown()}
+        
+        Answer this question based on the DataFrame:
+        {question}
+        
+        Return Python code to answer this.
+        """
 
         try:
-            prompt = f"""You are an expert data analyst. Answer the following question based on this DataFrame:
-            {df.head(10).to_string(index=False)}
-            \n\nQuestion: {user_question}\nAnswer:"""
-
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.2
+                temperature=0,
             )
-            answer = response['choices'][0]['message']['content']
-            st.markdown(f"**Answer:** {answer}")
+            code = response.choices[0].message.content.strip("`python").strip("`").strip()
+
+            st.subheader(" Generated Code:")
+            st.code(code, language="python")
+
+            try:
+                # Execute the generated code safely
+                local_env = {"df": df}
+                exec(code, {}, local_env)
+                output = local_env.get("output", "No output variable returned.")
+                st.subheader(" Result:")
+                st.write(output)
+            except Exception as e:
+                st.error(f"Error executing generated code: {e}")
 
         except Exception as e:
-            st.error(f"⚠️ Unable to get a response. Reason: {str(e)}")
-            st.info("Please ensure your OpenAI API key is valid and has enough quota.")
+            st.error(f"API Error: {e}")
