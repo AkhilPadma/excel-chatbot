@@ -1,46 +1,65 @@
 import streamlit as st
 import pandas as pd
-import requests
+import openai
 import os
+from openai import OpenAI
 
-HF_TOKEN = os.getenv("HF_TOKEN")  # Set this in Streamlit Cloud or locally
+# Set page config
+st.set_page_config(page_title="Excel Chatbot", layout="wide")
 
-# Streamlit UI
-st.title("📊 Excel Chatbot with Hugging Face Inference API")
+# API Key (set it via Streamlit secrets or environment)
+api_key = os.getenv("OPENAI_API_KEY", "sk-xxxx")  # Replace or use secrets
+client = OpenAI(api_key=api_key)
 
-uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx", "xls"])
+# Title
+st.title("📊 Excel Chatbot using OpenAI API")
+
+# Upload file
+uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
-    st.subheader("📁 Data Preview")
+    st.subheader("Preview of Excel Data")
     st.dataframe(df)
 
-    user_question = st.text_input("Ask a question about your Excel data:")
+    st.subheader("Column Types:")
+    st.dataframe(df.dtypes.astype(str).reset_index().rename(columns={'index': 'Column'}))
 
-    if user_question:
-        context = df.to_csv(index=False)
-        prompt = f"""You are an assistant. Use the following data table to answer the question.\n\nData:\n{context}\n\nQuestion: {user_question}"""
+    st.subheader("Ask a question about your Excel data:")
+    question = st.text_input("")
 
-        headers = {
-            "Authorization": f"Bearer {HF_TOKEN}",
-            "Content-Type": "application/json"
-        }
+    if question:
+        # Construct prompt
+        prompt = f"""
+        You are a data assistant. The following is a pandas DataFrame:
+        {df.head(10).to_markdown()}
+        
+        Answer this question based on the DataFrame:
+        {question}
+        
+        Return Python code to answer this.
+        """
 
-        payload = {
-            "inputs": prompt,
-            "parameters": {"max_new_tokens": 200}
-        }
-
-        with st.spinner("Thinking..."):
-            response = requests.post(
-                "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1",
-                headers=headers,
-                json=payload
+        try:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
             )
+            code = response.choices[0].message.content.strip("`python").strip("`").strip()
 
-            if response.status_code == 200:
-                result = response.json()[0]["generated_text"]
-                st.subheader("🧠 Response")
-                st.write(result)
-            else:
-                st.error(f"❌ Error: {response.status_code} - {response.text}")
+            st.subheader("🔍 Generated Code:")
+            st.code(code, language="python")
+
+            try:
+                # Execute the generated code safely
+                local_env = {"df": df}
+                exec(code, {}, local_env)
+                output = local_env.get("output", "No output variable returned.")
+                st.subheader("✅ Result:")
+                st.write(output)
+            except Exception as e:
+                st.error(f"Error executing generated code: {e}")
+
+        except Exception as e:
+            st.error(f"❌ API Error: {e}")
