@@ -1,7 +1,4 @@
 streamlit
 pandas
+openai
 openpyxl
-matplotlib
-huggingface_hub
-langchain
-langchain-community
