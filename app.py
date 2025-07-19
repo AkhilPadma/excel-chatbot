@@ -1,89 +1,43 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import io
-import contextlib
-from langchain_community.llms import HuggingFaceHub
+import openai
 import os
 
-# App Title
+# Title
 st.set_page_config(page_title="Excel Chatbot", layout="wide")
-st.title(" Natural Language Excel Chatbot")
+st.title("🧠 Excel Chatbot using OpenAI")
 
-# Set Hugging Face API Token
-os.environ["HUGGINGFACEHUB_API_TOKEN"] = st.secrets["HUGGINGFACEHUB_API_TOKEN"]
-
-# Upload section
-uploaded_file = st.file_uploader(" Upload an Excel (.xlsx) file", type=["xlsx"])
+# File uploader
+uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
 
 if uploaded_file:
-    try:
-        # Load Excel sheet into pandas
-        df = pd.read_excel(uploaded_file, engine='openpyxl')
+    df = pd.read_excel(uploaded_file)
+    st.subheader("Uploaded Data")
+    st.dataframe(df)
 
-        # Clean up column names
-        df.columns = [
-            col.strip().lower().replace(" ", "_").replace("(", "").replace(")", "").replace("$", "")
-            for col in df.columns
-        ]
+    st.subheader("Column Types:")
+    st.dataframe(pd.DataFrame(df.dtypes, columns=["Data Type"]).T)
 
-        # Show success and preview
-        st.success(" File uploaded and data loaded successfully!")
-        st.write(" First few rows of your data:")
-        st.dataframe(df.head())
+    # Prompt input
+    user_question = st.text_input("Ask a question about your Excel data:")
 
-        # Show info about the schema
-        st.write(" Column Types:")
-        st.write(df.dtypes)
+    if user_question:
+        # Placeholder: Load your OpenAI API key here
+        openai.api_key = os.getenv("OPENAI_API_KEY", "sk-xxxx")  # Replace with real key if available
 
-    except Exception as e:
-        st.error(f" Error reading the Excel file: {e}")
-else:
-    st.info(" Please upload an Excel file to continue.")
-
-def ask_model(query, df):
-    """
-    Asks a question to a locally run language model.
-    """
-    schema = df.dtypes.to_dict()
-
-    prompt = f"""
-You are a data analyst working with a pandas DataFrame called `df` with this schema:
-{schema}
-
-A user asked: "{query}"
-
-Reply with valid Python code using pandas and matplotlib to compute or visualize the answer.
-Use only column names from the schema above.
-Don't explain the code, just return the Python code directly.
-"""
-
-    # Initialize the Hugging Face model
-    llm = HuggingFaceHub(repo_id="mistralai/Mistral-7B-Instruct-v0.2", model_kwargs={"temperature":0.1, "max_length":512})
-
-    # Use .invoke() which is the standard way to call LangChain models
-    response = llm.invoke(prompt)
-
-    return response
-st.markdown("---")
-query = st.text_input(" Ask a question about your Excel data:")
-
-if query and uploaded_file:
-    with st.spinner("Thinking..."):
         try:
-            model_code = ask_model(query, df)
+            prompt = f"""You are an expert data analyst. Answer the following question based on this DataFrame:
+            {df.head(10).to_string(index=False)}
+            \n\nQuestion: {user_question}\nAnswer:"""
 
-            # Ensure the response is treated as code
-            st.code(model_code, language="python")
-
-            # Execute code in a safe environment
-            with contextlib.redirect_stdout(io.StringIO()) as f:
-                local_env = {"df": df, "plt": plt, "st": st}
-                exec(model_code, local_env)
-
-            output = f.getvalue()
-            if output:
-                st.text(output)
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2
+            )
+            answer = response['choices'][0]['message']['content']
+            st.markdown(f"**Answer:** {answer}")
 
         except Exception as e:
-            st.error(f" Error running the generated code: {e}")
+            st.error(f"⚠️ Unable to get a response. Reason: {str(e)}")
+            st.info("Please ensure your OpenAI API key is valid and has enough quota.")
