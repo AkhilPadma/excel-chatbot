@@ -57,14 +57,14 @@ Reply with valid Python code using pandas and matplotlib to compute or visualize
 Use only column names from the schema above.
 Don't explain the code, just return the Python code directly.
 """
-    
+
     # Initialize the Hugging Face model
     llm = HuggingFaceHub(repo_id="mistralai/Mistral-7B-Instruct-v0.2", model_kwargs={"temperature":0.1, "max_length":512})
-    
-    response = llm(prompt)
+
+    # Use .invoke() which is the standard way to call LangChain models
+    response = llm.invoke(prompt)
 
     return response
-
 st.markdown("---")
 query = st.text_input(" Ask a question about your Excel data:")
 
