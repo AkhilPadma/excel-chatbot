@@ -5,7 +5,7 @@ import requests
 
 # Set the Streamlit page title
 st.set_page_config(page_title="Excel Chatbot", layout="wide")
-st.title("📊 Chat with Your Excel Sheet")
+st.title(" Chat with Your Excel Sheet")
 
 # Mistral API Key Setup
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
