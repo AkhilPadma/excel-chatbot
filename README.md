@@ -39,6 +39,8 @@ This Streamlit app uses the **Mistral AI API (`mistral-tiny`)** to generate insi
 <img width="1239" height="696" alt="image" src="https://github.com/user-attachments/assets/709698c4-836a-4efb-b7bb-02b508d43dcd" />
 )
 
+WEB APP : https://excel-chatbot-6qrb8bqhbbkg5gbu5u4ysn.streamlit.app/
+
 ## 🚀 Getting Started (Local)
 
 > You don’t need to run locally if using GitHub + Streamlit Cloud. But here’s how if you want to:
